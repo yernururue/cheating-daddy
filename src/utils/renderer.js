@@ -205,7 +205,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
     try {
         if (isMacOS) {
-            // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
+            // On macOS, use SystemAudioDump for audio; screenshots come from the main process
             console.log('Starting macOS capture with SystemAudioDump...');
 
             // Start macOS audio capture
