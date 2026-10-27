@@ -15,6 +15,8 @@ const DEFAULT_CONFIG = {
     disableGroqThinking: true,
     // 'gemini' | 'groq' | 'openrouter' — which service answers in BYOK mode
     responseProvider: 'groq',
+    // 'auto' (same as responseProvider) | 'gemini' | 'groq' | 'openrouter' — which service analyzes screenshots
+    imageProvider: 'auto',
     openrouterModel: 'google/gemini-3.8-flash',
     openrouterImageModel: 'google/gemini-3.8-flash',
 };

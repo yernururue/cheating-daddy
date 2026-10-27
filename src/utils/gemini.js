@@ -12,7 +12,7 @@ const {
     incrementCharUsage,
     getConfig,
 } = require('../storage');
-const { resolveResponseProvider } = require('./responseProvider');
+const { resolveResponseProvider, resolveImageProvider } = require('./responseProvider');
 const openrouter = require('./openrouter');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { startTransportLog, logTransportEvent, closeTransportLog } = require('./transportLogger');
@@ -224,6 +224,14 @@ async function getStoredSetting(key, defaultValue) {
 // 'groq' | 'openrouter' | null — null means Gemini Live answers on its own
 function getActiveResponseProvider() {
     return resolveResponseProvider(getConfig(), {
+        groqApiKey: getGroqApiKey(),
+        openrouterApiKey: getOpenRouterApiKey(),
+    });
+}
+
+// 'groq' | 'openrouter' | null — null means Gemini HTTP analyzes screenshots
+function getActiveImageProvider() {
+    return resolveImageProvider(getConfig(), {
         groqApiKey: getGroqApiKey(),
         openrouterApiKey: getOpenRouterApiKey(),
     });
@@ -1372,7 +1380,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            const provider = getActiveResponseProvider();
+            const provider = getActiveImageProvider();
             if (provider === 'openrouter') {
                 return await sendImageToOpenRouter(data, prompt);
             }

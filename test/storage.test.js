@@ -30,6 +30,7 @@ test('config dir lives under the temp HOME', () => {
 test('config has OpenRouter defaults and a response provider', () => {
     const config = storage.getConfig();
     assert.equal(config.responseProvider, 'groq');
+    assert.equal(config.imageProvider, 'auto');
     assert.equal(typeof config.openrouterModel, 'string');
     assert.ok(config.openrouterModel.includes('/'));
     assert.equal(typeof config.openrouterImageModel, 'string');

@@ -19,6 +19,13 @@ const RESPONSE_PROVIDER_OPTIONS = [
     { value: 'openrouter', label: 'OpenRouter' },
 ];
 
+const IMAGE_PROVIDER_OPTIONS = [
+    { value: 'auto', label: 'Same as answers' },
+    { value: 'openrouter', label: 'OpenRouter' },
+    { value: 'groq', label: 'Groq' },
+    { value: 'gemini', label: 'Gemini' },
+];
+
 const OPENROUTER_DEFAULT_MODEL = 'google/gemini-3.8-flash';
 const OPENROUTER_MAX_LISTED_MODELS = 200;
 
@@ -743,6 +750,7 @@ export class MainView extends LitElement {
         _groqImageModel: { state: true },
         _disableGroqThinking: { state: true },
         _responseProvider: { state: true },
+        _imageProvider: { state: true },
         _openrouterKey: { state: true },
         _openrouterModel: { state: true },
         _openrouterImageModel: { state: true },
@@ -783,6 +791,7 @@ export class MainView extends LitElement {
         this._groqImageModel = 'qwen/qwen3.6-27b';
         this._disableGroqThinking = true;
         this._responseProvider = 'groq';
+        this._imageProvider = 'auto';
         this._openrouterKey = '';
         this._openrouterModel = OPENROUTER_DEFAULT_MODEL;
         this._openrouterImageModel = OPENROUTER_DEFAULT_MODEL;
@@ -834,6 +843,7 @@ export class MainView extends LitElement {
             this._groqImageModel = config.groqImageModel || 'qwen/qwen3.6-27b';
             this._disableGroqThinking = config.disableGroqThinking === true;
             this._responseProvider = config.responseProvider || 'groq';
+            this._imageProvider = config.imageProvider || 'auto';
             this._openrouterKey = (await cheatingDaddy.storage.getOpenRouterApiKey().catch(() => '')) || '';
             this._openrouterModel = config.openrouterModel || OPENROUTER_DEFAULT_MODEL;
             this._openrouterImageModel = config.openrouterImageModel || OPENROUTER_DEFAULT_MODEL;
@@ -1039,13 +1049,25 @@ export class MainView extends LitElement {
         this.requestUpdate();
     }
 
+    // Screenshot provider as the UI shows it; the main process additionally falls back when a key is missing.
+    _effectiveImageProvider() {
+        return this._imageProvider === 'auto' ? this._responseProvider : this._imageProvider;
+    }
+
     _usesProvider(provider) {
-        return this._responseProvider === provider;
+        return this._responseProvider === provider || this._effectiveImageProvider() === provider;
     }
 
     async _saveResponseProvider(val) {
         this._responseProvider = val;
         await cheatingDaddy.storage.updateConfig('responseProvider', val);
+        this._ensureOpenRouterModels();
+        this.requestUpdate();
+    }
+
+    async _saveImageProvider(val) {
+        this._imageProvider = val;
+        await cheatingDaddy.storage.updateConfig('imageProvider', val);
         this._ensureOpenRouterModels();
         this.requestUpdate();
     }
@@ -1320,8 +1342,9 @@ export class MainView extends LitElement {
                     <span class="config-summary-text">
                         <span class="config-summary-title">AI responses</span>
                         <span class="config-summary-description">
-                            ${RESPONSE_PROVIDER_OPTIONS.find(option => option.value === this._responseProvider)?.label || 'Groq'} key and response
-                            model
+                            ${RESPONSE_PROVIDER_OPTIONS.find(option => option.value === this._responseProvider)?.label || 'Groq'} answers ·
+                            ${RESPONSE_PROVIDER_OPTIONS.find(option => option.value === this._effectiveImageProvider())?.label || 'Gemini'}
+                            screenshots
                         </span>
                     </span>
                     ${this._renderConfigChevron()}
@@ -1335,6 +1358,17 @@ export class MainView extends LitElement {
                                     html`<option value=${option.value} ?selected=${option.value === this._responseProvider}>${option.label}</option>`
                             )}
                         </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Screenshot analysis</label>
+                        <select @change=${e => this._saveImageProvider(e.target.value)}>
+                            ${IMAGE_PROVIDER_OPTIONS.map(
+                                option =>
+                                    html`<option value=${option.value} ?selected=${option.value === this._imageProvider}>${option.label}</option>`
+                            )}
+                        </select>
+                        <div class="form-hint">Lets screenshots use a paid vision model while speech stays on a free provider</div>
                     </div>
 
                     ${this._usesProvider('groq') ? this._renderGroqSettings() : ''}
@@ -1371,15 +1405,26 @@ export class MainView extends LitElement {
                 </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Groq Model</label>
-                <input type="text" .value=${this._groqModel} @input=${e => this._saveGroqModel(e.target.value)} />
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Groq Image Model</label>
-                <input type="text" .value=${this._groqImageModel} @input=${e => this._saveGroqImageModel(e.target.value)} />
-            </div>
+            ${
+                this._responseProvider === 'groq'
+                    ? html`
+                          <div class="form-group">
+                              <label class="form-label">Groq Model</label>
+                              <input type="text" .value=${this._groqModel} @input=${e => this._saveGroqModel(e.target.value)} />
+                          </div>
+                      `
+                    : ''
+            }
+            ${
+                this._effectiveImageProvider() === 'groq'
+                    ? html`
+                          <div class="form-group">
+                              <label class="form-label">Groq Image Model</label>
+                              <input type="text" .value=${this._groqImageModel} @input=${e => this._saveGroqImageModel(e.target.value)} />
+                          </div>
+                      `
+                    : ''
+            }
         `;
     }
 
@@ -1393,26 +1438,34 @@ export class MainView extends LitElement {
                 </div>
             </div>
 
-            ${this._renderOpenRouterModelPicker({
-                label: 'Model',
-                value: this._openrouterModel,
-                query: this._openrouterQuery,
-                custom: this._openrouterCustom,
-                imageOnly: false,
-                onQuery: q => (this._openrouterQuery = q),
-                onCustom: custom => (this._openrouterCustom = custom),
-                onSave: val => this._saveOpenRouterModel(val),
-            })}
-            ${this._renderOpenRouterModelPicker({
-                label: 'Image Model',
-                value: this._openrouterImageModel,
-                query: this._openrouterImageQuery,
-                custom: this._openrouterImageCustom,
-                imageOnly: true,
-                onQuery: q => (this._openrouterImageQuery = q),
-                onCustom: custom => (this._openrouterImageCustom = custom),
-                onSave: val => this._saveOpenRouterImageModel(val),
-            })}
+            ${
+                this._responseProvider === 'openrouter'
+                    ? this._renderOpenRouterModelPicker({
+                          label: 'Model',
+                          value: this._openrouterModel,
+                          query: this._openrouterQuery,
+                          custom: this._openrouterCustom,
+                          imageOnly: false,
+                          onQuery: q => (this._openrouterQuery = q),
+                          onCustom: custom => (this._openrouterCustom = custom),
+                          onSave: val => this._saveOpenRouterModel(val),
+                      })
+                    : ''
+            }
+            ${
+                this._effectiveImageProvider() === 'openrouter'
+                    ? this._renderOpenRouterModelPicker({
+                          label: 'Image Model',
+                          value: this._openrouterImageModel,
+                          query: this._openrouterImageQuery,
+                          custom: this._openrouterImageCustom,
+                          imageOnly: true,
+                          onQuery: q => (this._openrouterImageQuery = q),
+                          onCustom: custom => (this._openrouterImageCustom = custom),
+                          onSave: val => this._saveOpenRouterImageModel(val),
+                      })
+                    : ''
+            }
         `;
     }
 
