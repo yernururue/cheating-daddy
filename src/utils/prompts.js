@@ -219,7 +219,43 @@ function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true)
     return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled);
 }
 
+// 'detailed' keeps the profile's own format; 'short' overrides it with bare answers (preference answerStyle)
+const ANSWER_STYLES = ['detailed', 'short'];
+
+const SHORT_ANSWER_INSTRUCTION = `**ANSWER STYLE OVERRIDE (takes priority over the format rules above):**
+- Reply with the final answer only, no explanation, no restating the question
+- For several questions, put one answer per line, numbered in the order the questions appear:
+1) b
+2) d
+3) a
+- For multiple choice give just the option letter (or the option text if there are no letters)
+- For open questions give the shortest correct answer (a word, number or one short sentence)`;
+
+const DETAILED_SCREENSHOT_PROMPT = `Help me on this page, give me the answer no bs, complete answer.
+So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
+If its a question about the website, give me the answer no bs, complete answer.
+If its a mcq question, give me the answer no bs, complete answer.`;
+
+const SHORT_SCREENSHOT_PROMPT = `Answer the question(s) on this screen. Reply with answers only, no explanation.
+Put one answer per line, numbered in the order the questions appear:
+1) b
+2) d
+3) a
+For multiple choice give only the option letter (or option text if there are no letters). For other questions give the shortest correct answer.`;
+
+function applyAnswerStyle(systemPrompt, answerStyle) {
+    if (answerStyle !== 'short') return systemPrompt;
+    return `${systemPrompt}\n\n${SHORT_ANSWER_INSTRUCTION}`;
+}
+
+function getScreenshotPrompt(answerStyle) {
+    return answerStyle === 'short' ? SHORT_SCREENSHOT_PROMPT : DETAILED_SCREENSHOT_PROMPT;
+}
+
 module.exports = {
     profilePrompts,
     getSystemPrompt,
+    ANSWER_STYLES,
+    applyAnswerStyle,
+    getScreenshotPrompt,
 };

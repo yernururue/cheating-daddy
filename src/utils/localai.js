@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { getSystemPrompt } = require('./prompts');
+const { getSystemPrompt, applyAnswerStyle } = require('./prompts');
+const { getPreferences } = require('../storage');
 const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
 const {
     ensureNativeBinary,
@@ -430,7 +431,7 @@ async function initializeLocalSession(model, whisperModel, profile, customPrompt
         closeLocalSession();
         initializationController = new AbortController();
         llamaCacheSnapshot = getDirectoryEntries(path.join(getModelsDirectory(), 'llama'));
-        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false);
+        currentSystemPrompt = applyAnswerStyle(getSystemPrompt(profile, customPrompt, false), getPreferences().answerStyle);
         llamaModel = model;
 
         const nativeFiles = await prepareNativeFiles(model, whisperModel, initializationController.signal);

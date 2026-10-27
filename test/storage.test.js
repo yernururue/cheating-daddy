@@ -74,3 +74,9 @@ test('compact overlay is on by default with no saved position', () => {
     assert.equal(prefs.compactOverlay, true);
     assert.equal(prefs.compactOverlayBounds, null);
 });
+
+test('answer style defaults to detailed and overlay opacity to a visible value', () => {
+    const prefs = storage.getPreferences();
+    assert.equal(prefs.answerStyle, 'detailed');
+    assert.equal(prefs.compactOverlayOpacity, 0.85);
+});

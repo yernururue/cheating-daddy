@@ -45,6 +45,8 @@ const DEFAULT_PREFERENCES = {
     compactOverlay: true,
     compactOverlayBounds: null,
     compactOverlayOpacity: 0.85,
+    // 'detailed' | 'short' (bare numbered answers like "1) b  2) d")
+    answerStyle: 'detailed',
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

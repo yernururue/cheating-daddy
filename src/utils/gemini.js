@@ -2,7 +2,7 @@ const { GoogleGenAI, Modality } = require('@google/genai');
 const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
-const { getSystemPrompt } = require('./prompts');
+const { getSystemPrompt, applyAnswerStyle, getScreenshotPrompt } = require('./prompts');
 const {
     getAvailableModel,
     incrementLimitCount,
@@ -11,6 +11,7 @@ const {
     getOpenRouterApiKey,
     incrementCharUsage,
     getConfig,
+    getPreferences,
 } = require('../storage');
 const { resolveResponseProvider, resolveImageProvider } = require('./responseProvider');
 const openrouter = require('./openrouter');
@@ -836,7 +837,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    const systemPrompt = applyAnswerStyle(getSystemPrompt(profile, customPrompt, googleSearchEnabled), getPreferences().answerStyle);
     currentSystemPrompt = systemPrompt; // Store for Groq
 
     // Initialize new conversation session only on first connect
@@ -1353,6 +1354,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('send-image-content', async (event, { data, prompt }) => {
         try {
+            if (!prompt || typeof prompt !== 'string') {
+                prompt = getScreenshotPrompt(getPreferences().answerStyle);
+            }
+
             if (!data || typeof data !== 'string') {
                 console.error('Invalid image data received');
                 return { success: false, error: 'Invalid image data' };

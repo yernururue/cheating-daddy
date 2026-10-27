@@ -39,6 +39,7 @@ export class AICustomizeView extends LitElement {
         selectedProfile: { type: String },
         onProfileChange: { type: Function },
         _context: { state: true },
+        _answerStyle: { state: true },
     };
 
     constructor() {
@@ -46,6 +47,7 @@ export class AICustomizeView extends LitElement {
         this.selectedProfile = 'interview';
         this.onProfileChange = () => {};
         this._context = '';
+        this._answerStyle = 'detailed';
         this._loadFromStorage();
     }
 
@@ -53,6 +55,7 @@ export class AICustomizeView extends LitElement {
         try {
             const prefs = await cheatingDaddy.storage.getPreferences();
             this._context = prefs.customPrompt || '';
+            this._answerStyle = prefs.answerStyle || 'detailed';
             this.requestUpdate();
         } catch (error) {
             console.error('Error loading AI customize storage:', error);
@@ -66,6 +69,11 @@ export class AICustomizeView extends LitElement {
     async _saveContext(val) {
         this._context = val;
         await cheatingDaddy.storage.updatePreference('customPrompt', val);
+    }
+
+    async _saveAnswerStyle(val) {
+        this._answerStyle = val;
+        await cheatingDaddy.storage.updatePreference('answerStyle', val);
     }
 
     _getProfileName(profile) {
@@ -103,6 +111,13 @@ export class AICustomizeView extends LitElement {
                                 <label class="form-label">Profile</label>
                                 <select class="control" .value=${this.selectedProfile} @change=${this._handleProfileChange}>
                                     ${profiles.map(profile => html`<option value=${profile.value}>${profile.label}</option>`)}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Answer Style</label>
+                                <select class="control" @change=${e => this._saveAnswerStyle(e.target.value)}>
+                                    <option value="detailed" ?selected=${this._answerStyle === 'detailed'}>Detailed (explanation, full code)</option>
+                                    <option value="short" ?selected=${this._answerStyle === 'short'}>Short (answers only: 1) b 2) d)</option>
                                 </select>
                             </div>
                             <div class="form-group vertical">

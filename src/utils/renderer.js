@@ -490,11 +490,6 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     }
 }
 
-const MANUAL_SCREENSHOT_PROMPT = `Help me on this page, give me the answer no bs, complete answer.
-So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
-If its a question about the website, give me the answer no bs, complete answer.
-If its a mcq question, give me the answer no bs, complete answer.`;
-
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
     const quality = imageQuality || currentImageQuality;
@@ -505,10 +500,9 @@ async function captureManualScreenshot(imageQuality = null) {
         return;
     }
 
-    // Send image with prompt to HTTP API (response streams via IPC events)
+    // The main process picks the prompt for the selected answer style (utils/prompts.js); response streams via IPC events
     const result = await ipcRenderer.invoke('send-image-content', {
         data: capture.data,
-        prompt: MANUAL_SCREENSHOT_PROMPT,
     });
 
     if (result.success) {
@@ -632,6 +626,10 @@ function handleShortcut(shortcutKey) {
         } else {
             captureManualScreenshot();
         }
+    }
+
+    if (shortcutKey === 'end-session' && currentView === 'assistant') {
+        cheatingDaddy.element().handleClose();
     }
 }
 

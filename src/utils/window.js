@@ -141,6 +141,7 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+        endSession: isMac ? 'Cmd+Shift+Escape' : 'Ctrl+Shift+End',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -244,6 +245,18 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.log(`Registered nextStep: ${keybinds.nextStep}`);
         } catch (error) {
             console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
+        }
+    }
+
+    // Register end session shortcut (only acts during a session)
+    if (keybinds.endSession) {
+        try {
+            globalShortcut.register(keybinds.endSession, () => {
+                mainWindow.webContents.executeJavaScript(`cheatingDaddy.handleShortcut('end-session');`);
+            });
+            console.log(`Registered endSession: ${keybinds.endSession}`);
+        } catch (error) {
+            console.error(`Failed to register endSession (${keybinds.endSession}):`, error);
         }
     }
 
