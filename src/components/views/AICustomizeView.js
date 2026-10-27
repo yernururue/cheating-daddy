@@ -109,15 +109,15 @@ export class AICustomizeView extends LitElement {
                         <div class="form-grid">
                             <div class="form-group">
                                 <label class="form-label">Profile</label>
-                                <select class="control" .value=${this.selectedProfile} @change=${this._handleProfileChange}>
-                                    ${profiles.map(profile => html`<option value=${profile.value}>${profile.label}</option>`)}
+                                <select class="control" @change=${this._handleProfileChange}>
+                                    ${profiles.map(profile => html`<option value=${profile.value} .selected=${profile.value === this.selectedProfile}>${profile.label}</option>`)}
                                 </select>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Answer Style</label>
                                 <select class="control" @change=${e => this._saveAnswerStyle(e.target.value)}>
-                                    <option value="detailed" ?selected=${this._answerStyle === 'detailed'}>Detailed (explanation, full code)</option>
-                                    <option value="short" ?selected=${this._answerStyle === 'short'}>Short (answers only: 1) b 2) d)</option>
+                                    <option value="detailed" .selected=${this._answerStyle === 'detailed'}>Detailed (explanation, full code)</option>
+                                    <option value="short" .selected=${this._answerStyle === 'short'}>Short (answers only: 1) b 2) d)</option>
                                 </select>
                             </div>
                             <div class="form-group vertical">
