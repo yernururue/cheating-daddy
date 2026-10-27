@@ -15,7 +15,7 @@ test('applyAnswerStyle leaves the prompt unchanged for detailed answers', () => 
 test('applyAnswerStyle appends a short-answer override after the base prompt', () => {
     const prompt = applyAnswerStyle('BASE', 'short');
     assert.ok(prompt.startsWith('BASE'));
-    assert.match(prompt, /1\) /);
+    assert.match(prompt, /^\d+\) /m);
     assert.match(prompt, /no explanation/i);
 });
 
@@ -33,7 +33,17 @@ test('getScreenshotPrompt: detailed asks for the full solution', () => {
 
 test('getScreenshotPrompt: short asks for numbered answers only', () => {
     const prompt = getScreenshotPrompt('short');
-    assert.match(prompt, /1\) /);
+    assert.match(prompt, /^\d+\) /m);
     assert.doesNotMatch(prompt, /entire code/i);
     assert.equal(getScreenshotPrompt(undefined), getScreenshotPrompt('detailed'));
+});
+
+// Questions 5 and 6 on screen must come back as "5) …" and "6) …", not renumbered from 1
+test('short prompts keep the question numbers shown on the screen', () => {
+    for (const prompt of [getScreenshotPrompt('short'), applyAnswerStyle('BASE', 'short')]) {
+        assert.match(prompt, /number.*shown on the screen/i);
+        assert.match(prompt, /^5\) /m);
+        assert.doesNotMatch(prompt, /numbered in the order the questions appear/i);
+        assert.match(prompt, /no numbers/i);
+    }
 });

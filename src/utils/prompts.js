@@ -224,10 +224,10 @@ const ANSWER_STYLES = ['detailed', 'short'];
 
 const SHORT_ANSWER_INSTRUCTION = `**ANSWER STYLE OVERRIDE (takes priority over the format rules above):**
 - Reply with the final answer only, no explanation, no restating the question
-- For several questions, put one answer per line, numbered in the order the questions appear:
-1) b
-2) d
-3) a
+- For several questions, put one answer per line, labeled with the question number shown on the screen (questions 5 and 6 → "5)" and "6)"):
+5) b
+6) d
+- If the questions have no numbers, number them 1), 2), 3) in the order they appear
 - For multiple choice give just the option letter (or the option text if there are no letters)
 - For open questions give the shortest correct answer (a word, number or one short sentence)`;
 
@@ -237,10 +237,10 @@ If its a question about the website, give me the answer no bs, complete answer.
 If its a mcq question, give me the answer no bs, complete answer.`;
 
 const SHORT_SCREENSHOT_PROMPT = `Answer the question(s) on this screen. Reply with answers only, no explanation.
-Put one answer per line, numbered in the order the questions appear:
-1) b
-2) d
-3) a
+Put one answer per line, labeled with the question number shown on the screen (e.g. questions 5 and 6 → "5)" and "6)"):
+5) b
+6) d
+If the questions have no numbers, number them 1), 2), 3) in the order they appear.
 For multiple choice give only the option letter (or option text if there are no letters). For other questions give the shortest correct answer.`;
 
 function applyAnswerStyle(systemPrompt, answerStyle) {
