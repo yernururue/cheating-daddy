@@ -80,3 +80,14 @@ test('answer style defaults to detailed and overlay opacity to a visible value',
     assert.equal(prefs.answerStyle, 'detailed');
     assert.equal(prefs.compactOverlayOpacity, 0.85);
 });
+
+test('response text color defaults to null (use the theme color)', () => {
+    assert.equal(storage.getPreferences().responseTextColor, null);
+});
+
+test('response text color persists and can be reset to null', () => {
+    storage.updatePreference('responseTextColor', '#ff8800');
+    assert.equal(storage.getPreferences().responseTextColor, '#ff8800');
+    storage.updatePreference('responseTextColor', null);
+    assert.equal(storage.getPreferences().responseTextColor, null);
+});

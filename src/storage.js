@@ -47,6 +47,8 @@ const DEFAULT_PREFERENCES = {
     compactOverlayOpacity: 0.85,
     // 'detailed' | 'short' (bare numbered answers like "1) b  2) d")
     answerStyle: 'detailed',
+    // '#rrggbb' for answer text in the assistant view, or null to use the theme's text color
+    responseTextColor: null,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
