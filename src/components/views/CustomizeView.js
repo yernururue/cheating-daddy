@@ -5,6 +5,23 @@ export class CustomizeView extends LitElement {
     static styles = [
         unifiedPageStyles,
         css`
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                gap: var(--space-sm);
+                font-size: var(--font-size-sm);
+                color: var(--text-secondary);
+                cursor: pointer;
+            }
+
+            .checkbox-row input {
+                width: 16px;
+                height: 16px;
+                margin: 0;
+                accent-color: var(--accent);
+                cursor: pointer;
+            }
+
             .danger-surface {
                 border-color: var(--danger);
             }
@@ -182,6 +199,8 @@ export class CustomizeView extends LitElement {
         layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
+        compactOverlay: { type: Boolean },
+        compactOverlayOpacity: { type: Number },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -207,6 +226,8 @@ export class CustomizeView extends LitElement {
         this.onImageQualityChange = () => {};
         this.onLayoutModeChange = () => {};
         this.googleSearchEnabled = true;
+        this.compactOverlay = true;
+        this.compactOverlayOpacity = 0.85;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -227,6 +248,8 @@ export class CustomizeView extends LitElement {
         try {
             const [prefs, keybinds] = await Promise.all([cheatingDaddy.storage.getPreferences(), cheatingDaddy.storage.getKeybinds()]);
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
+            this.compactOverlay = prefs.compactOverlay ?? true;
+            this.compactOverlayOpacity = prefs.compactOverlayOpacity ?? 0.85;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -366,6 +389,16 @@ export class CustomizeView extends LitElement {
         await cheatingDaddy.theme.save(this.theme);
         this.updateBackgroundAppearance();
         this.requestUpdate();
+    }
+
+    async handleCompactOverlayChange(e) {
+        this.compactOverlay = e.target.checked;
+        await cheatingDaddy.storage.updatePreference('compactOverlay', this.compactOverlay);
+    }
+
+    async handleCompactOverlayOpacityChange(e) {
+        this.compactOverlayOpacity = parseFloat(e.target.value);
+        await cheatingDaddy.storage.updatePreference('compactOverlayOpacity', this.compactOverlayOpacity);
     }
 
     async handleGoogleSearchChange(e) {
@@ -622,6 +655,28 @@ export class CustomizeView extends LitElement {
                         <select class="control" .value=${this.theme} @change=${this.handleThemeChange}>
                             ${this.getThemes().map(theme => html`<option value=${theme.value}>${theme.name}</option>`)}
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Session window</label>
+                        <label class="checkbox-row">
+                            <input type="checkbox" .checked=${this.compactOverlay} @change=${this.handleCompactOverlayChange} />
+                            <span>Compact overlay: small click-through answer box in the screen corner</span>
+                        </label>
+                    </div>
+                    <div class="form-group slider-wrap">
+                        <div class="slider-header">
+                            <label class="form-label">Overlay Opacity</label>
+                            <span class="slider-value">${Math.round(this.compactOverlayOpacity * 100)}%</span>
+                        </div>
+                        <input
+                            class="slider-input"
+                            type="range"
+                            min="0.15"
+                            max="1"
+                            step="0.05"
+                            .value=${this.compactOverlayOpacity}
+                            @input=${this.handleCompactOverlayOpacityChange}
+                        />
                     </div>
                     <div class="form-group slider-wrap">
                         <div class="slider-header">

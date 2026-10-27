@@ -41,6 +41,10 @@ const DEFAULT_PREFERENCES = {
     googleSearchEnabled: false,
     localLlmModel: 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M',
     whisperModel: 'tiny.en',
+    // During a session, shrink the window to a small click-through answer overlay in a screen corner
+    compactOverlay: true,
+    compactOverlayBounds: null,
+    compactOverlayOpacity: 0.85,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

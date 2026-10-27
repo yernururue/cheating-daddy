@@ -340,6 +340,39 @@ export class CheatingDaddyApp extends LitElement {
             flex-direction: column;
         }
 
+        /* Compact session overlay: just the answer and a tiny status line */
+        .app-shell.compact {
+            height: 100vh;
+            margin: 0;
+            border: none;
+            border-radius: 8px;
+        }
+
+        /* The status line only shows while the cursor is over the overlay */
+        .compact .live-bar {
+            height: 20px;
+            padding: 0 var(--space-sm);
+            gap: var(--space-sm);
+            justify-content: flex-end;
+            border-bottom: none;
+            background: transparent;
+            visibility: hidden;
+        }
+
+        .app-shell.compact:hover .live-bar {
+            visibility: visible;
+        }
+
+        .compact .live-bar-text.clickable {
+            -webkit-app-region: no-drag;
+        }
+
+        .compact .live-bar-text {
+            font-size: 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* Onboarding fills everything */
         .fullscreen {
             position: fixed;
@@ -382,6 +415,7 @@ export class CheatingDaddyApp extends LitElement {
         layoutMode: { type: String },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
+        _compactOverlay: { state: true },
         _awaitingNewResponse: { state: true },
         shouldAnimateResponse: { type: Boolean },
         _storageLoaded: { state: true },
@@ -406,6 +440,7 @@ export class CheatingDaddyApp extends LitElement {
         this.currentResponseIndex = -1;
         this._viewInstances = new Map();
         this._isClickThrough = false;
+        this._compactOverlay = true;
         this._awaitingNewResponse = false;
         this._currentResponseIsComplete = true;
         this.shouldAnimateResponse = false;
@@ -453,6 +488,7 @@ export class CheatingDaddyApp extends LitElement {
             this.selectedScreenshotInterval = prefs.selectedScreenshotInterval || '5';
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
+            this._compactOverlay = prefs.compactOverlay !== false;
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -597,6 +633,7 @@ export class CheatingDaddyApp extends LitElement {
 
     async handleStart() {
         const prefs = await cheatingDaddy.storage.getPreferences();
+        this._compactOverlay = prefs.compactOverlay !== false;
         const providerMode = prefs.providerMode === 'cloud' ? 'byok' : prefs.providerMode || 'byok';
 
         if (providerMode === 'cloud') {
@@ -736,6 +773,10 @@ export class CheatingDaddyApp extends LitElement {
         return this.currentView === 'assistant';
     }
 
+    _isCompactLive() {
+        return this._isLiveMode() && this._compactOverlay;
+    }
+
     // ── Render ──
 
     renderCurrentView() {
@@ -799,6 +840,7 @@ export class CheatingDaddyApp extends LitElement {
                         .selectedProfile=${this.selectedProfile}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
+                        .compact=${this._isCompactLive()}
                         @response-index-changed=${this.handleResponseIndexChanged}
                         @response-animation-complete=${() => {
                             this.shouldAnimateResponse = false;
@@ -930,8 +972,24 @@ export class CheatingDaddyApp extends LitElement {
         `;
     }
 
+    renderCompactLiveBar() {
+        return html`
+            <div class="live-bar">
+                <span class="live-bar-text">${this.getElapsedTime()}</span>
+                <span class="live-bar-text clickable" @click=${() => this.handleHideToggle()} title="Hide">[hide]</span>
+                <span class="live-bar-text clickable" @click=${() => this.handleClose()} title="End session">[end]</span>
+            </div>
+        `;
+    }
+
+    _sendOverlayHover(hovering) {
+        if (!this._isCompactLive() || !window.require) return;
+        window.require('electron').ipcRenderer.send('overlay-hover', hovering);
+    }
+
     renderLiveBar() {
         if (!this._isLiveMode()) return '';
+        if (this._compactOverlay) return this.renderCompactLiveBar();
 
         const profileLabels = {
             interview: 'Interview',
@@ -975,7 +1033,11 @@ export class CheatingDaddyApp extends LitElement {
         const isLive = this._isLiveMode();
 
         return html`
-            <div class="app-shell">
+            <div
+                class="app-shell ${this._isCompactLive() ? 'compact' : ''}"
+                @mouseenter=${() => this._sendOverlayHover(true)}
+                @mouseleave=${() => this._sendOverlayHover(false)}
+            >
                 <div class="top-drag-bar ${isLive ? 'hidden' : ''}">
                     <div class="traffic-lights">
                         <button class="traffic-light close" @click=${() => this.handleClose()} title="Close"></button>

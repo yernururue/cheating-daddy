@@ -1,8 +1,11 @@
 const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const storage = require('../storage');
+const { COMPACT_OVERLAY_MIN_SIZE, resolveCompactBounds, clampOverlayOpacity } = require('./overlayLayout');
 
 let mouseEventsIgnored = false;
+// Window bounds before switching to the compact session overlay (null when not in compact mode)
+let boundsBeforeCompact = null;
 
 const DEFAULT_MAIN_WINDOW_SIZE = { width: 1100, height: 800 };
 const MIN_WINDOW_SIZE = { width: 700, height: 320 };
@@ -89,6 +92,45 @@ function createWindow(sendToRenderer, geminiSessionRef) {
     return mainWindow;
 }
 
+function setClickThrough(mainWindow, enabled) {
+    mouseEventsIgnored = enabled;
+    if (enabled) {
+        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+        mainWindow.setIgnoreMouseEvents(false);
+    }
+    mainWindow.webContents.send('click-through-toggled', enabled);
+}
+
+// Session overlay: shrink to a small click-through window in a screen corner, restore the full window afterwards.
+function enterCompactOverlay(mainWindow) {
+    if (boundsBeforeCompact || storage.getPreferences().compactOverlay === false) return;
+
+    const prefs = storage.getPreferences();
+    boundsBeforeCompact = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(boundsBeforeCompact);
+    const bounds = resolveCompactBounds({
+        saved: prefs.compactOverlayBounds,
+        workArea: display.workArea,
+        workAreas: screen.getAllDisplays().map(d => d.workArea),
+    });
+
+    mainWindow.setMinimumSize(COMPACT_OVERLAY_MIN_SIZE.width, COMPACT_OVERLAY_MIN_SIZE.height);
+    mainWindow.setBounds(bounds);
+    mainWindow.setOpacity(clampOverlayOpacity(prefs.compactOverlayOpacity));
+    setClickThrough(mainWindow, true);
+}
+
+function exitCompactOverlay(mainWindow) {
+    if (!boundsBeforeCompact) return;
+
+    storage.updatePreference('compactOverlayBounds', mainWindow.getBounds());
+    mainWindow.setOpacity(1);
+    mainWindow.setMinimumSize(MIN_WINDOW_SIZE.width, MIN_WINDOW_SIZE.height);
+    mainWindow.setBounds(boundsBeforeCompact);
+    boundsBeforeCompact = null;
+}
+
 function getDefaultKeybinds() {
     const isMac = process.platform === 'darwin';
     return {
@@ -172,15 +214,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.toggleClickThrough) {
         try {
             globalShortcut.register(keybinds.toggleClickThrough, () => {
-                mouseEventsIgnored = !mouseEventsIgnored;
-                if (mouseEventsIgnored) {
-                    mainWindow.setIgnoreMouseEvents(true, { forward: true });
-                    console.log('Mouse events ignored');
-                } else {
-                    mainWindow.setIgnoreMouseEvents(false);
-                    console.log('Mouse events enabled');
-                }
-                mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
+                setClickThrough(mainWindow, !mouseEventsIgnored);
+                console.log(mouseEventsIgnored ? 'Mouse events ignored' : 'Mouse events enabled');
             });
             console.log(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
         } catch (error) {
@@ -302,8 +337,11 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 mainWindow.setVisibleOnAllWorkspaces(isLiveMode, { visibleOnFullScreen: isLiveMode });
             }
 
-            if (!isLiveMode) {
-                mainWindow.setIgnoreMouseEvents(false);
+            if (isLiveMode) {
+                enterCompactOverlay(mainWindow);
+            } else {
+                exitCompactOverlay(mainWindow);
+                setClickThrough(mainWindow, false);
             }
         }
     });
@@ -326,6 +364,17 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         } catch (error) {
             console.error('Error capturing screen:', error);
             return { success: false, error: error.message };
+        }
+    });
+
+    // While click-through is on, the compact overlay still takes the mouse when hovered so the
+    // answer can be scrolled and [end] clicked; it goes back to click-through when the cursor leaves.
+    ipcMain.on('overlay-hover', (event, hovering) => {
+        if (mainWindow.isDestroyed() || !boundsBeforeCompact || !mouseEventsIgnored) return;
+        if (hovering === true) {
+            mainWindow.setIgnoreMouseEvents(false);
+        } else {
+            mainWindow.setIgnoreMouseEvents(true, { forward: true });
         }
     });
 

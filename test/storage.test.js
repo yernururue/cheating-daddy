@@ -68,3 +68,9 @@ test('response provider and model choices persist', () => {
     assert.equal(config.responseProvider, 'openrouter');
     assert.equal(config.openrouterModel, 'anthropic/claude-sonnet-5.5');
 });
+
+test('compact overlay is on by default with no saved position', () => {
+    const prefs = storage.getPreferences();
+    assert.equal(prefs.compactOverlay, true);
+    assert.equal(prefs.compactOverlayBounds, null);
+});

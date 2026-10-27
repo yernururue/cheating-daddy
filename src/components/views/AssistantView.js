@@ -8,6 +8,17 @@ export class AssistantView extends LitElement {
             flex-direction: column;
         }
 
+        /* Compact session overlay: answers only, driven by global shortcuts */
+        :host([compact]) .input-bar,
+        :host([compact]) .response-nav {
+            display: none;
+        }
+
+        :host([compact]) .response-container {
+            font-size: 13px;
+            padding: 2px var(--space-sm) var(--space-sm);
+        }
+
         * {
             font-family: var(--font);
             cursor: default;
@@ -306,6 +317,7 @@ export class AssistantView extends LitElement {
         selectedProfile: { type: String },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
+        compact: { type: Boolean, reflect: true },
         isAnalyzing: { type: Boolean, state: true },
     };
 
@@ -316,6 +328,7 @@ export class AssistantView extends LitElement {
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
         this.isAnalyzing = false;
+        this.compact = false;
         this._animFrame = null;
     }
 
