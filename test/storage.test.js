@@ -91,3 +91,9 @@ test('response text color persists and can be reset to null', () => {
     storage.updatePreference('responseTextColor', null);
     assert.equal(storage.getPreferences().responseTextColor, null);
 });
+
+test('menu bar answer is off by default and has no saved position', () => {
+    const prefs = storage.getPreferences();
+    assert.equal(prefs.menuBarAnswer, false);
+    assert.equal(prefs.menuBarAnswerOffset, null);
+});

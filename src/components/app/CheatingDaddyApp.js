@@ -765,6 +765,22 @@ export class CheatingDaddyApp extends LitElement {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.send('view-changed', this.currentView);
         }
+
+        if (
+            this._isLiveMode() &&
+            window.require &&
+            ['currentView', 'responses', 'currentResponseIndex', 'statusText'].some(key => changedProperties.has(key))
+        ) {
+            this._sendMenuBarAnswer();
+        }
+    }
+
+    // Mirrors the shown answer to the menu bar answer window (main process ignores it unless that mode is on).
+    // Before the first answer only errors are shown, so the menu bar stays empty while listening.
+    _sendMenuBarAnswer() {
+        const response = this.currentResponseIndex >= 0 ? this.responses[this.currentResponseIndex] : null;
+        const text = response || (this.statusText && this.statusText.includes('Error') ? this.statusText : '');
+        window.require('electron').ipcRenderer.send('menubar-answer', { text, index: response ? this.currentResponseIndex : -1 });
     }
 
     // ── Helpers ──

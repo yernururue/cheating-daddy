@@ -45,7 +45,40 @@ function clampOverlayOpacity(value) {
     return Math.min(1, Math.max(MIN_OVERLAY_OPACITY, opacity));
 }
 
+// Menu bar answer: a one-line window drawn over the macOS menu bar, right of the notch by default.
+const MENU_BAR_ANSWER_WIDTH = 320;
+const DEFAULT_MENU_BAR_HEIGHT = 24;
+// Half the notch width on MacBooks plus a little space, so the text starts clear of it
+const NOTCH_CLEARANCE = 110;
+
+// The menu bar is the strip between the top of the display and its work area.
+function menuBarHeight(displayBounds, workArea) {
+    const height = workArea.y - displayBounds.y;
+    return height > 0 ? height : DEFAULT_MENU_BAR_HEIGHT;
+}
+
+function clampMenuBarX(x, width, displayBounds) {
+    return Math.round(Math.min(displayBounds.x + displayBounds.width - width, Math.max(displayBounds.x, x)));
+}
+
+// savedOffset is the last x the user moved the answer to, relative to the display's left edge.
+function computeMenuBarAnswerBounds({ displayBounds, workArea, savedOffset, width = MENU_BAR_ANSWER_WIDTH }) {
+    const answerWidth = Math.min(width, displayBounds.width);
+    const defaultX = displayBounds.x + displayBounds.width / 2 + NOTCH_CLEARANCE;
+    const x = Number.isFinite(savedOffset) ? displayBounds.x + savedOffset : defaultX;
+    return {
+        x: clampMenuBarX(x, answerWidth, displayBounds),
+        y: displayBounds.y,
+        width: answerWidth,
+        height: menuBarHeight(displayBounds, workArea),
+    };
+}
+
 module.exports = {
+    clampMenuBarX,
+    computeMenuBarAnswerBounds,
+    MENU_BAR_ANSWER_WIDTH,
+    menuBarHeight,
     COMPACT_OVERLAY_SIZE,
     clampOverlayOpacity,
     COMPACT_OVERLAY_MIN_SIZE,

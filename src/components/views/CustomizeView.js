@@ -14,6 +14,11 @@ export class CustomizeView extends LitElement {
                 cursor: pointer;
             }
 
+            .setting-hint {
+                font-size: var(--font-size-xs);
+                color: var(--text-muted);
+            }
+
             .checkbox-row input {
                 width: 16px;
                 height: 16px;
@@ -216,6 +221,7 @@ export class CustomizeView extends LitElement {
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
         compactOverlay: { type: Boolean },
+        menuBarAnswer: { type: Boolean },
         compactOverlayOpacity: { type: Number },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
@@ -244,6 +250,7 @@ export class CustomizeView extends LitElement {
         this.onLayoutModeChange = () => {};
         this.googleSearchEnabled = true;
         this.compactOverlay = true;
+        this.menuBarAnswer = false;
         this.compactOverlayOpacity = 0.85;
         this.isClearing = false;
         this.isRestoring = false;
@@ -267,6 +274,7 @@ export class CustomizeView extends LitElement {
             const [prefs, keybinds] = await Promise.all([cheatingDaddy.storage.getPreferences(), cheatingDaddy.storage.getKeybinds()]);
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.compactOverlay = prefs.compactOverlay ?? true;
+            this.menuBarAnswer = prefs.menuBarAnswer ?? false;
             this.compactOverlayOpacity = prefs.compactOverlayOpacity ?? 0.85;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
@@ -415,6 +423,11 @@ export class CustomizeView extends LitElement {
     async handleCompactOverlayChange(e) {
         this.compactOverlay = e.target.checked;
         await cheatingDaddy.storage.updatePreference('compactOverlay', this.compactOverlay);
+    }
+
+    async handleMenuBarAnswerChange(e) {
+        this.menuBarAnswer = e.target.checked;
+        await cheatingDaddy.storage.updatePreference('menuBarAnswer', this.menuBarAnswer);
     }
 
     async handleCompactOverlayOpacityChange(e) {
@@ -696,6 +709,17 @@ export class CustomizeView extends LitElement {
                             <input type="checkbox" .checked=${this.compactOverlay} @change=${this.handleCompactOverlayChange} />
                             <span>Compact overlay: small click-through answer box in the screen corner</span>
                         </label>
+                        ${cheatingDaddy.isMacOS
+                            ? html`
+                                  <label class="checkbox-row">
+                                      <input type="checkbox" .checked=${this.menuBarAnswer} @change=${this.handleMenuBarAnswerChange} />
+                                      <span>Menu bar: show answers as one line in the menu bar and hide the window during a session</span>
+                                  </label>
+                                  <div class="setting-hint">
+                                      Move Left/Right shortcuts move it, Scroll Up/Down page through a long answer, End Session brings the window back.
+                                  </div>
+                              `
+                            : ''}
                     </div>
                     <div class="form-group slider-wrap">
                         <div class="slider-header">

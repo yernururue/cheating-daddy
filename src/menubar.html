@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="content-security-policy" content="script-src 'self' 'unsafe-inline'" />
+        <title>Menu Bar Answer</title>
+        <style>
+            :root {
+                --menubar-text: rgba(0, 0, 0, 0.85);
+                --menubar-dim: rgba(0, 0, 0, 0.45);
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --menubar-text: rgba(255, 255, 255, 0.88);
+                    --menubar-dim: rgba(255, 255, 255, 0.45);
+                }
+            }
+
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                overflow: hidden;
+                background: transparent;
+                cursor: default;
+                user-select: none;
+            }
+
+            body {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font:
+                    13px -apple-system,
+                    BlinkMacSystemFont,
+                    'Helvetica Neue',
+                    sans-serif;
+                color: var(--response-text-color, var(--menubar-text));
+                white-space: nowrap;
+            }
+
+            #text {
+                flex: 0 1 auto;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            #page {
+                flex: none;
+                font-size: 11px;
+                font-variant-numeric: tabular-nums;
+                color: var(--menubar-dim);
+            }
+        </style>
+    </head>
+    <body>
+        <span id="text"></span>
+        <span id="page"></span>
+        <script>
+            const { ipcRenderer } = require('electron');
+            // Resolved from this page's directory (src/), like renderer.js
+            const { toMenuBarText, paginate, clampPage } = require('./utils/menuBarText');
+            const { normalizeHexColor } = require('./utils/colors');
+
+            // Room for the "2/3" page counter when the answer does not fit on one page
+            const PAGE_COUNTER_WIDTH = 34;
+
+            const textEl = document.getElementById('text');
+            const pageEl = document.getElementById('page');
+            const ctx = document.createElement('canvas').getContext('2d');
+
+            let text = '';
+            let index = -1;
+            let pages = [];
+            let page = 0;
+
+            function measure(s) {
+                return ctx.measureText(s).width;
+            }
+
+            function render() {
+                ctx.font = getComputedStyle(textEl).font;
+                const width = window.innerWidth;
+                pages = paginate(text, width, measure);
+                if (pages.length > 1) pages = paginate(text, width - PAGE_COUNTER_WIDTH, measure);
+                page = clampPage(page, pages.length);
+
+                textEl.textContent = pages[page] || '';
+                pageEl.textContent = pages.length > 1 ? `${page + 1}/${pages.length}` : '';
+            }
+
+            ipcRenderer.on('menubar-answer', (event, answer) => {
+                // A different answer starts on its first page; a streamed update of the same answer keeps the page
+                if (answer.index !== index) page = 0;
+                index = answer.index;
+                text = toMenuBarText(answer.text);
+
+                const color = normalizeHexColor(answer.color);
+                if (color) {
+                    document.documentElement.style.setProperty('--response-text-color', color);
+                } else {
+                    document.documentElement.style.removeProperty('--response-text-color');
+                }
+                render();
+            });
+
+            ipcRenderer.on('menubar-page', (event, delta) => {
+                page = clampPage(page + delta, pages.length);
+                render();
+            });
+
+            window.addEventListener('resize', render);
+        </script>
+    </body>
+</html>

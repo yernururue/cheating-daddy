@@ -49,6 +49,10 @@ const DEFAULT_PREFERENCES = {
     answerStyle: 'detailed',
     // '#rrggbb' for answer text in the assistant view, or null to use the theme's text color
     responseTextColor: null,
+    // During a session, show answers in one line over the macOS menu bar instead of the overlay window
+    menuBarAnswer: false,
+    // x of the menu bar answer relative to the display's left edge, or null for right of the notch
+    menuBarAnswerOffset: null,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults

@@ -6,6 +6,10 @@ const {
     isBoundsOnScreen,
     resolveCompactBounds,
     clampOverlayOpacity,
+    MENU_BAR_ANSWER_WIDTH,
+    menuBarHeight,
+    computeMenuBarAnswerBounds,
+    clampMenuBarX,
 } = require('../src/utils/overlayLayout');
 
 const LAPTOP = { x: 0, y: 25, width: 1512, height: 919 }; // work area below the menu bar
@@ -66,4 +70,66 @@ test('clampOverlayOpacity keeps the overlay between faint and fully opaque', () 
     assert.equal(clampOverlayOpacity('0.4'), 0.4);
     assert.equal(clampOverlayOpacity(undefined), 0.85);
     assert.equal(clampOverlayOpacity('abc'), 0.85);
+});
+
+// Display bounds include the menu bar; the work area starts below it (37pt on a notched MacBook).
+const NOTCHED = { bounds: { x: 0, y: 0, width: 1512, height: 982 }, workArea: { x: 0, y: 37, width: 1512, height: 945 } };
+const SECOND = { bounds: { x: 1512, y: -200, width: 2560, height: 1440 }, workArea: { x: 1512, y: -175, width: 2560, height: 1415 } };
+
+test('menuBarHeight is the gap between the display top and its work area', () => {
+    assert.equal(menuBarHeight(NOTCHED.bounds, NOTCHED.workArea), 37);
+    assert.equal(menuBarHeight(SECOND.bounds, SECOND.workArea), 25);
+});
+
+test('menuBarHeight falls back to the standard height when the menu bar is hidden', () => {
+    assert.equal(menuBarHeight({ x: 0, y: 0, width: 1512, height: 982 }, { x: 0, y: 0, width: 1512, height: 982 }), 24);
+});
+
+test('computeMenuBarAnswerBounds puts the answer right of the notch, inside the menu bar', () => {
+    assert.deepEqual(computeMenuBarAnswerBounds({ displayBounds: NOTCHED.bounds, workArea: NOTCHED.workArea }), {
+        x: 756 + 110,
+        y: 0,
+        width: MENU_BAR_ANSWER_WIDTH,
+        height: 37,
+    });
+});
+
+test('computeMenuBarAnswerBounds uses the origin of secondary displays', () => {
+    const bounds = computeMenuBarAnswerBounds({ displayBounds: SECOND.bounds, workArea: SECOND.workArea });
+    assert.equal(bounds.x, 1512 + 1280 + 110);
+    assert.equal(bounds.y, -200);
+    assert.equal(bounds.height, 25);
+});
+
+test('computeMenuBarAnswerBounds reuses a saved offset from the display left edge', () => {
+    const bounds = computeMenuBarAnswerBounds({ displayBounds: SECOND.bounds, workArea: SECOND.workArea, savedOffset: 400 });
+    assert.equal(bounds.x, 1512 + 400);
+});
+
+test('computeMenuBarAnswerBounds keeps a saved offset on the display', () => {
+    const right = computeMenuBarAnswerBounds({ displayBounds: NOTCHED.bounds, workArea: NOTCHED.workArea, savedOffset: 5000 });
+    assert.equal(right.x, 1512 - MENU_BAR_ANSWER_WIDTH);
+    const left = computeMenuBarAnswerBounds({ displayBounds: NOTCHED.bounds, workArea: NOTCHED.workArea, savedOffset: -50 });
+    assert.equal(left.x, 0);
+});
+
+test('computeMenuBarAnswerBounds ignores an invalid saved offset', () => {
+    const defaults = computeMenuBarAnswerBounds({ displayBounds: NOTCHED.bounds, workArea: NOTCHED.workArea });
+    for (const savedOffset of [null, undefined, 'abc', NaN]) {
+        assert.equal(computeMenuBarAnswerBounds({ displayBounds: NOTCHED.bounds, workArea: NOTCHED.workArea, savedOffset }).x, defaults.x);
+    }
+});
+
+test('computeMenuBarAnswerBounds narrows the answer on small displays', () => {
+    const small = { x: 0, y: 0, width: 300, height: 600 };
+    const bounds = computeMenuBarAnswerBounds({ displayBounds: small, workArea: { x: 0, y: 24, width: 300, height: 576 } });
+    assert.equal(bounds.width, 300);
+    assert.equal(bounds.x, 0);
+});
+
+test('clampMenuBarX keeps the answer within the display horizontally', () => {
+    assert.equal(clampMenuBarX(100, 320, NOTCHED.bounds), 100);
+    assert.equal(clampMenuBarX(-10, 320, NOTCHED.bounds), 0);
+    assert.equal(clampMenuBarX(1400, 320, NOTCHED.bounds), 1512 - 320);
+    assert.equal(clampMenuBarX(1000, 320, SECOND.bounds), 1512);
 });

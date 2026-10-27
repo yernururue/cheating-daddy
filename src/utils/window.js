@@ -2,6 +2,7 @@ const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const storage = require('../storage');
 const { COMPACT_OVERLAY_MIN_SIZE, resolveCompactBounds, clampOverlayOpacity } = require('./overlayLayout');
+const menuBar = require('./menuBarWindow');
 
 let mouseEventsIgnored = false;
 // Window bounds before switching to the compact session overlay (null when not in compact mode)
@@ -159,6 +160,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
     const moveIncrement = Math.floor(Math.min(width, height) * 0.1);
+    // The menu bar answer only moves sideways, in smaller steps
+    const menuBarMoveIncrement = 40;
 
     const movementActions = {
         moveUp: () => {
@@ -172,11 +175,13 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             mainWindow.setPosition(currentX, currentY + moveIncrement);
         },
         moveLeft: () => {
+            if (menuBar.isMenuBarAnswerActive()) return menuBar.moveMenuBarAnswer(-menuBarMoveIncrement);
             if (!mainWindow.isVisible()) return;
             const [currentX, currentY] = mainWindow.getPosition();
             mainWindow.setPosition(currentX - moveIncrement, currentY);
         },
         moveRight: () => {
+            if (menuBar.isMenuBarAnswerActive()) return menuBar.moveMenuBarAnswer(menuBarMoveIncrement);
             if (!mainWindow.isVisible()) return;
             const [currentX, currentY] = mainWindow.getPosition();
             mainWindow.setPosition(currentX + moveIncrement, currentY);
@@ -199,7 +204,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.toggleVisibility) {
         try {
             globalShortcut.register(keybinds.toggleVisibility, () => {
-                if (mainWindow.isVisible()) {
+                if (menuBar.isMenuBarAnswerActive()) {
+                    menuBar.toggleMenuBarAnswerVisibility();
+                } else if (mainWindow.isVisible()) {
                     mainWindow.hide();
                 } else {
                     mainWindow.showInactive();
@@ -292,6 +299,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             globalShortcut.register(keybinds.scrollUp, () => {
                 console.log('Scroll up shortcut triggered');
                 sendToRenderer('scroll-response-up');
+                menuBar.pageMenuBarAnswer(-1);
             });
             console.log(`Registered scrollUp: ${keybinds.scrollUp}`);
         } catch (error) {
@@ -305,6 +313,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             globalShortcut.register(keybinds.scrollDown, () => {
                 console.log('Scroll down shortcut triggered');
                 sendToRenderer('scroll-response-down');
+                menuBar.pageMenuBarAnswer(1);
             });
             console.log(`Registered scrollDown: ${keybinds.scrollDown}`);
         } catch (error) {
@@ -319,6 +328,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 console.log('Emergency Erase triggered!');
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.hide();
+                    menuBar.hideMenuBarAnswer();
 
                     if (geminiSessionRef.current) {
                         geminiSessionRef.current.close();
@@ -345,6 +355,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         if (!mainWindow.isDestroyed()) {
             const isLiveMode = view === 'assistant';
 
+            // Show the window again while it is still on all workspaces: changing that flag on a hidden window
+            // can leave it on another Space, where show() does not bring it on screen.
+            if (!isLiveMode && menuBar.isMenuBarAnswerActive()) {
+                menuBar.hideMenuBarAnswer();
+                mainWindow.show();
+            }
+
             if (process.platform !== 'win32') {
                 mainWindow.setAlwaysOnTop(isLiveMode);
                 mainWindow.setVisibleOnAllWorkspaces(isLiveMode, { visibleOnFullScreen: isLiveMode });
@@ -352,11 +369,20 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
             if (isLiveMode) {
                 enterCompactOverlay(mainWindow);
+                if (menuBar.isMenuBarAnswerEnabled()) {
+                    menuBar.showMenuBarAnswer(mainWindow.getBounds());
+                    mainWindow.hide();
+                }
             } else {
                 exitCompactOverlay(mainWindow);
                 setClickThrough(mainWindow, false);
             }
         }
+    });
+
+    // The answer the assistant view currently shows, mirrored to the menu bar answer while it is active
+    ipcMain.on('menubar-answer', (event, answer) => {
+        menuBar.setMenuBarAnswer(answer);
     });
 
     // Screenshot of the display the app is on, without the app window itself (see utils/screenCapture.js)
