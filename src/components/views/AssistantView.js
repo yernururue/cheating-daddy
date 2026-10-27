@@ -34,6 +34,7 @@ export class AssistantView extends LitElement {
             background: var(--bg-app);
             padding: var(--space-sm) var(--space-md);
             scroll-behavior: smooth;
+            transition: opacity 0.15s ease;
             user-select: text;
             cursor: text;
             /* Settings → Appearance → Response Text Color, falls back to the theme */
@@ -155,21 +156,18 @@ export class AssistantView extends LitElement {
             font-weight: var(--font-weight-semibold);
         }
 
+        /* No scrollbar: the answer still scrolls with the wheel/trackpad and the Scroll Up/Down shortcuts */
+        .response-container {
+            scrollbar-width: none;
+        }
+
         .response-container::-webkit-scrollbar {
-            width: 6px;
+            display: none;
         }
 
-        .response-container::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .response-container::-webkit-scrollbar-thumb {
-            background: var(--border-strong);
-            border-radius: 3px;
-        }
-
-        .response-container::-webkit-scrollbar-thumb:hover {
-            background: #444444;
+        /* Previous answer while a screen analysis is in flight */
+        .response-container.pending {
+            opacity: 0.35;
         }
 
         /* ── Response navigation strip ── */
@@ -320,7 +318,8 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         compact: { type: Boolean, reflect: true },
-        isAnalyzing: { type: Boolean, state: true },
+        // A screen analysis is in flight (set by the app, also for the Ask Next Step shortcut)
+        analyzing: { type: Boolean },
     };
 
     constructor() {
@@ -329,27 +328,14 @@ export class AssistantView extends LitElement {
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
-        this.isAnalyzing = false;
+        this.analyzing = false;
         this.compact = false;
         this._animFrame = null;
     }
 
-    getProfileNames() {
-        return {
-            interview: 'Job Interview',
-            sales: 'Sales Call',
-            meeting: 'Business Meeting',
-            presentation: 'Presentation',
-            negotiation: 'Negotiation',
-            exam: 'Exam Assistant',
-        };
-    }
-
+    // Empty until the first answer arrives
     getCurrentResponse() {
-        const profileNames = this.getProfileNames();
-        return this.responses.length > 0 && this.currentResponseIndex >= 0
-            ? this.responses[this.currentResponseIndex]
-            : `Listening to your ${profileNames[this.selectedProfile] || 'session'}...`;
+        return this.responses.length > 0 && this.currentResponseIndex >= 0 ? this.responses[this.currentResponseIndex] : '';
     }
 
     renderMarkdown(content) {
@@ -487,10 +473,8 @@ export class AssistantView extends LitElement {
     }
 
     async handleScreenAnswer() {
-        if (this.isAnalyzing) return;
+        if (this.analyzing) return;
         if (window.captureManualScreenshot) {
-            this.isAnalyzing = true;
-            this._responseCountWhenStarted = this.responses.length;
             window.captureManualScreenshot();
         }
     }
@@ -652,17 +636,11 @@ export class AssistantView extends LitElement {
             this.updateResponseContent();
         }
 
-        if (changedProperties.has('isAnalyzing')) {
-            if (this.isAnalyzing) {
+        if (changedProperties.has('analyzing')) {
+            if (this.analyzing) {
                 this._startWaveformAnimation();
             } else {
                 this._stopWaveformAnimation();
-            }
-        }
-
-        if (changedProperties.has('responses') && this.isAnalyzing) {
-            if (this.responses.length > this._responseCountWhenStarted) {
-                this.isAnalyzing = false;
             }
         }
     }
@@ -683,7 +661,7 @@ export class AssistantView extends LitElement {
         const hasMultipleResponses = this.responses.length > 1;
 
         return html`
-            <div class="response-container" id="responseContainer"></div>
+            <div class="response-container ${this.analyzing && this.responses.length > 0 ? 'pending' : ''}" id="responseContainer"></div>
 
             ${hasMultipleResponses ? html`
                 <div class="response-nav">
@@ -710,7 +688,7 @@ export class AssistantView extends LitElement {
                         @keydown=${this.handleTextKeydown}
                     />
                 </div>
-                <button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
+                <button class="analyze-btn ${this.analyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
                     <canvas class="analyze-canvas"></canvas>
                     <span class="analyze-btn-content">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">

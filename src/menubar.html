@@ -46,6 +46,11 @@
                 text-overflow: ellipsis;
             }
 
+            /* Previous answer while a screen analysis is in flight */
+            body.pending #text {
+                opacity: 0.4;
+            }
+
             #page {
                 flex: none;
                 font-size: 11px;
@@ -95,6 +100,7 @@
                 if (answer.index !== index) page = 0;
                 index = answer.index;
                 text = toMenuBarText(answer.text);
+                document.body.classList.toggle('pending', answer.pending === true && text !== '');
 
                 const color = normalizeHexColor(answer.color);
                 if (color) {

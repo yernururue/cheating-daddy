@@ -495,24 +495,30 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
     const quality = imageQuality || currentImageQuality;
+    // Dims the current answer until the new one arrives, so a repeated identical answer still shows that it is fresh
+    cheatingDaddyApp.startAnalyzing();
 
-    const capture = await grabScreen(quality, true);
-    if (capture.error) {
-        cheatingDaddy.addNewResponse(`Error: ${capture.error}`);
-        return;
-    }
+    try {
+        const capture = await grabScreen(quality, true);
+        if (capture.error) {
+            cheatingDaddy.addNewResponse(`Error: ${capture.error}`);
+            return;
+        }
 
-    // The main process picks the prompt for the selected answer style (utils/prompts.js); response streams via IPC events
-    const result = await ipcRenderer.invoke('send-image-content', {
-        data: capture.data,
-    });
+        // The main process picks the prompt for the selected answer style (utils/prompts.js); response streams via IPC events
+        const result = await ipcRenderer.invoke('send-image-content', {
+            data: capture.data,
+        });
 
-    if (result.success) {
-        console.log(`Image response completed from ${result.model}`);
-        // Response already displayed via streaming events (new-response/update-response)
-    } else {
-        console.error('Failed to get image response:', result.error);
-        cheatingDaddy.addNewResponse(`Error: ${result.error}`);
+        if (result.success) {
+            console.log(`Image response completed from ${result.model}`);
+            // Response already displayed via streaming events (new-response/update-response)
+        } else {
+            console.error('Failed to get image response:', result.error);
+            cheatingDaddy.addNewResponse(`Error: ${result.error}`);
+        }
+    } finally {
+        cheatingDaddyApp.finishAnalyzing();
     }
 }
 

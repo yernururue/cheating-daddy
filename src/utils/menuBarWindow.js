@@ -91,7 +91,11 @@ function hideMenuBarAnswer() {
 }
 
 function setMenuBarAnswer(answer) {
-    lastAnswer = { text: typeof answer?.text === 'string' ? answer.text : '', index: Number.isInteger(answer?.index) ? answer.index : -1 };
+    lastAnswer = {
+        text: typeof answer?.text === 'string' ? answer.text : '',
+        index: Number.isInteger(answer?.index) ? answer.index : -1,
+        pending: answer?.pending === true,
+    };
     if (active) sendAnswer();
 }
 

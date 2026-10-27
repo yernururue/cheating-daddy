@@ -417,6 +417,7 @@ export class CheatingDaddyApp extends LitElement {
         _isClickThrough: { state: true },
         _compactOverlay: { state: true },
         _awaitingNewResponse: { state: true },
+        _analyzing: { state: true },
         shouldAnimateResponse: { type: Boolean },
         _storageLoaded: { state: true },
         _updateAvailable: { state: true },
@@ -442,6 +443,9 @@ export class CheatingDaddyApp extends LitElement {
         this._isClickThrough = false;
         this._compactOverlay = true;
         this._awaitingNewResponse = false;
+        // Screen analyses in flight (Ask Next Step); the shown answer is dimmed until a new one arrives
+        this._analyzing = false;
+        this._analyzingCount = 0;
         this._currentResponseIsComplete = true;
         this.shouldAnimateResponse = false;
         this._storageLoaded = false;
@@ -578,7 +582,18 @@ export class CheatingDaddyApp extends LitElement {
             this.currentResponseIndex = this.responses.length - 1;
         }
         this._awaitingNewResponse = false;
+        this._analyzing = false;
         this.requestUpdate();
+    }
+
+    startAnalyzing() {
+        this._analyzingCount++;
+        this._analyzing = true;
+    }
+
+    finishAnalyzing() {
+        this._analyzingCount = Math.max(0, this._analyzingCount - 1);
+        if (this._analyzingCount === 0) this._analyzing = false;
     }
 
     updateCurrentResponse(response) {
@@ -679,6 +694,8 @@ export class CheatingDaddyApp extends LitElement {
         cheatingDaddy.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
+        this._analyzing = false;
+        this._analyzingCount = 0;
         this.startTime = Date.now();
         this.sessionActive = true;
         this.currentView = 'assistant';
@@ -769,7 +786,7 @@ export class CheatingDaddyApp extends LitElement {
         if (
             this._isLiveMode() &&
             window.require &&
-            ['currentView', 'responses', 'currentResponseIndex', 'statusText'].some(key => changedProperties.has(key))
+            ['currentView', 'responses', 'currentResponseIndex', 'statusText', '_analyzing'].some(key => changedProperties.has(key))
         ) {
             this._sendMenuBarAnswer();
         }
@@ -780,7 +797,9 @@ export class CheatingDaddyApp extends LitElement {
     _sendMenuBarAnswer() {
         const response = this.currentResponseIndex >= 0 ? this.responses[this.currentResponseIndex] : null;
         const text = response || (this.statusText && this.statusText.includes('Error') ? this.statusText : '');
-        window.require('electron').ipcRenderer.send('menubar-answer', { text, index: response ? this.currentResponseIndex : -1 });
+        window
+            .require('electron')
+            .ipcRenderer.send('menubar-answer', { text, index: response ? this.currentResponseIndex : -1, pending: this._analyzing });
     }
 
     // ── Helpers ──
@@ -857,6 +876,7 @@ export class CheatingDaddyApp extends LitElement {
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         .compact=${this._isCompactLive()}
+                        .analyzing=${this._analyzing}
                         @response-index-changed=${this.handleResponseIndexChanged}
                         @response-animation-complete=${() => {
                             this.shouldAnimateResponse = false;
