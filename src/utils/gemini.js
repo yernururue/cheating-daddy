@@ -3,7 +3,17 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getConfig } = require('../storage');
+const {
+    getAvailableModel,
+    incrementLimitCount,
+    getApiKey,
+    getGroqApiKey,
+    getOpenRouterApiKey,
+    incrementCharUsage,
+    getConfig,
+} = require('../storage');
+const { resolveResponseProvider } = require('./responseProvider');
+const openrouter = require('./openrouter');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { startTransportLog, logTransportEvent, closeTransportLog } = require('./transportLogger');
 
@@ -17,8 +27,12 @@ function getLocalAi() {
 // Provider mode: 'byok', 'cloud', or 'local'
 let currentProviderMode = 'byok';
 
-// Groq conversation history for context
+// Text-provider conversation history for context (shared by Groq, OpenRouter and Gemma)
 let groqConversationHistory = [];
+
+// OpenRouter model catalog cache (also used to pick reasoning options per model)
+const OPENROUTER_MODELS_TTL_MS = 10 * 60 * 1000;
+let openrouterModelsCache = { models: [], fetchedAt: 0 };
 
 // Conversation tracking variables
 let currentSessionId = null;
@@ -51,6 +65,8 @@ let groqRequestStartedForTurn = false;
 const GROQ_MAX_COMPLETION_TOKENS = 16384;
 const GROQ_EMPTY_RESPONSE_MESSAGE =
     'Groq reached the maximum completion-token limit before returning a final answer. Disable thinking in Home → AI responses and try again.';
+const OPENROUTER_EMPTY_RESPONSE_MESSAGE =
+    'OpenRouter returned no final answer. Try disabling thinking in Home → AI responses or picking a different model.';
 
 // Reconnection variables
 let isUserClosing = false;
@@ -205,14 +221,24 @@ async function getStoredSetting(key, defaultValue) {
     return defaultValue;
 }
 
-// helper to check if groq has been configured
-function hasGroqKey() {
-    const key = getGroqApiKey();
-    return key && key.trim() != '';
+// 'groq' | 'openrouter' | null — null means Gemini Live answers on its own
+function getActiveResponseProvider() {
+    return resolveResponseProvider(getConfig(), {
+        groqApiKey: getGroqApiKey(),
+        openrouterApiKey: getOpenRouterApiKey(),
+    });
 }
 
-function sendFinalTranscriptionToGroq() {
-    if (!hasGroqKey() || groqRequestStartedForTurn) {
+function sendToResponseProvider(provider, text) {
+    if (provider === 'openrouter') {
+        return sendToOpenRouter(text);
+    }
+    return sendToGroq(text);
+}
+
+function sendFinalTranscriptionToResponseProvider() {
+    const provider = getActiveResponseProvider();
+    if (!provider || groqRequestStartedForTurn) {
         return;
     }
 
@@ -222,7 +248,7 @@ function sendFinalTranscriptionToGroq() {
     }
 
     groqRequestStartedForTurn = true;
-    sendToGroq(transcription);
+    sendToResponseProvider(provider, transcription);
 }
 
 function trimConversationHistoryForGemma(history, maxChars = 42000) {
@@ -545,6 +571,155 @@ async function sendImageToGroq(base64Data, prompt) {
     }
 }
 
+async function getOpenRouterModels(force = false) {
+    const isFresh = Date.now() - openrouterModelsCache.fetchedAt < OPENROUTER_MODELS_TTL_MS;
+    if (!force && isFresh && openrouterModelsCache.models.length > 0) {
+        return openrouterModelsCache.models;
+    }
+
+    const models = await openrouter.fetchModels();
+    openrouterModelsCache = { models, fetchedAt: Date.now() };
+    return models;
+}
+
+function findOpenRouterModelInfo(modelId) {
+    return openrouterModelsCache.models.find(model => model.id === modelId) || null;
+}
+
+async function streamOpenRouter(model, messages, logPrefix) {
+    const config = getConfig();
+    let isFirst = true;
+
+    const body = openrouter.buildChatBody({
+        model,
+        messages,
+        disableThinking: config.disableGroqThinking,
+        modelInfo: findOpenRouterModelInfo(model),
+    });
+
+    return openrouter.streamChatCompletion({
+        apiKey: getOpenRouterApiKey(),
+        body,
+        onEvent: event => logTransportEvent(`${logPrefix}.stream_event`, event),
+        onText: displayText => {
+            sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
+            isFirst = false;
+        },
+    });
+}
+
+async function sendToOpenRouter(transcription) {
+    if (!getOpenRouterApiKey()) {
+        console.log('No OpenRouter API key configured, skipping OpenRouter response');
+        return;
+    }
+
+    if (!transcription || transcription.trim() === '') {
+        console.log('Empty transcription, skipping OpenRouter');
+        return;
+    }
+
+    const modelToUse = getConfig().openrouterModel;
+
+    console.log(`Sending to OpenRouter (${modelToUse}):`, transcription.substring(0, 100) + '...');
+    logTransportEvent('openrouter.text.request', {
+        model: modelToUse,
+        transcription,
+    });
+
+    groqConversationHistory.push({
+        role: 'user',
+        content: transcription.trim(),
+    });
+
+    if (groqConversationHistory.length > 20) {
+        groqConversationHistory = groqConversationHistory.slice(-20);
+    }
+
+    try {
+        const { text, finishReason } = await streamOpenRouter(
+            modelToUse,
+            [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+            'openrouter.text'
+        );
+
+        if (!text) {
+            console.warn(`OpenRouter returned no final answer (${modelToUse})`);
+            logTransportEvent('openrouter.text.empty_response', { model: modelToUse, finishReason });
+            sendToRenderer('new-response', OPENROUTER_EMPTY_RESPONSE_MESSAGE);
+            sendToRenderer('update-status', 'OpenRouter returned no answer');
+            return;
+        }
+
+        groqConversationHistory.push({
+            role: 'assistant',
+            content: text,
+        });
+
+        saveConversationTurn(transcription, text);
+
+        logTransportEvent('openrouter.text.completed', {
+            model: modelToUse,
+            response: text,
+        });
+        console.log(`OpenRouter response completed (${modelToUse})`);
+        sendToRenderer('update-status', 'Listening...');
+    } catch (error) {
+        console.error('Error calling OpenRouter API:', error);
+        logTransportEvent('openrouter.text.error', {
+            error: error.message,
+            stack: error.stack,
+        });
+        sendToRenderer('update-status', error.message);
+    }
+}
+
+async function sendImageToOpenRouter(base64Data, prompt) {
+    const model = getConfig().openrouterImageModel;
+
+    logTransportEvent('openrouter.image.request', {
+        model,
+        prompt,
+        imageBytes: Buffer.byteLength(base64Data, 'base64'),
+    });
+
+    try {
+        const { text, finishReason } = await streamOpenRouter(
+            model,
+            [
+                { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: prompt },
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+                    ],
+                },
+            ],
+            'openrouter.image'
+        );
+
+        if (!text) {
+            logTransportEvent('openrouter.image.empty_response', { model, finishReason });
+            return { success: false, error: OPENROUTER_EMPTY_RESPONSE_MESSAGE };
+        }
+
+        saveScreenAnalysis(prompt, text, model);
+        logTransportEvent('openrouter.image.completed', {
+            model,
+            response: text,
+        });
+        return { success: true, text, model };
+    } catch (error) {
+        console.error('Error calling OpenRouter image API:', error);
+        logTransportEvent('openrouter.image.error', {
+            error: error.message,
+            stack: error.stack,
+        });
+        return { success: false, error: error.message };
+    }
+}
+
 async function sendToGemma(transcription) {
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -684,10 +859,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     }
 
                     if (message.serverContent?.inputTranscription) {
-                        sendFinalTranscriptionToGroq();
+                        sendFinalTranscriptionToResponseProvider();
                     }
 
-                    if (!hasGroqKey() && message.serverContent?.outputTranscription?.text) {
+                    if (!getActiveResponseProvider() && message.serverContent?.outputTranscription?.text) {
                         const isFirstChunk = messageBuffer === '';
                         messageBuffer += message.serverContent.outputTranscription.text;
                         sendToRenderer(isFirstChunk ? 'new-response' : 'update-response', messageBuffer);
@@ -695,7 +870,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     if (message.serverContent?.generationComplete) {
                         if (currentTranscription.trim() !== '') {
-                            if (!hasGroqKey() && messageBuffer.trim() !== '') {
+                            if (!getActiveResponseProvider() && messageBuffer.trim() !== '') {
                                 saveConversationTurn(currentTranscription, messageBuffer);
                             }
                             currentTranscription = '';
@@ -1197,8 +1372,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            const result = hasGroqKey() ? await sendImageToGroq(data, prompt) : await sendImageToGeminiHttp(data, prompt);
-            return result;
+            const provider = getActiveResponseProvider();
+            if (provider === 'openrouter') {
+                return await sendImageToOpenRouter(data, prompt);
+            }
+            if (provider === 'groq') {
+                return await sendImageToGroq(data, prompt);
+            }
+            return await sendImageToGeminiHttp(data, prompt);
         } catch (error) {
             console.error('Error sending image:', error);
             return { success: false, error: error.message };
@@ -1236,9 +1417,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         try {
             console.log('Sending text message:', text);
 
-            if (hasGroqKey()) {
+            const provider = getActiveResponseProvider();
+            if (provider) {
                 groqRequestStartedForTurn = true;
-                sendToGroq(text.trim());
+                sendToResponseProvider(provider, text.trim());
             }
 
             await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
@@ -1329,6 +1511,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: true, sessionId: currentSessionId };
         } catch (error) {
             console.error('Error starting new session:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('openrouter:list-models', async (event, force = false) => {
+        try {
+            const models = await getOpenRouterModels(force === true);
+            return { success: true, data: models };
+        } catch (error) {
+            console.error('Error fetching OpenRouter models:', error);
             return { success: false, error: error.message };
         }
     });

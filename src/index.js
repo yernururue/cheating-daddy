@@ -138,6 +138,25 @@ function setupStorageIpcHandlers() {
         }
     });
 
+    ipcMain.handle('storage:get-openrouter-api-key', async () => {
+        try {
+            return { success: true, data: storage.getOpenRouterApiKey() };
+        } catch (error) {
+            console.error('Error getting OpenRouter API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-openrouter-api-key', async (event, openrouterApiKey) => {
+        try {
+            storage.setOpenRouterApiKey(typeof openrouterApiKey === 'string' ? openrouterApiKey.trim() : '');
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting OpenRouter API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============ PREFERENCES ============
     ipcMain.handle('storage:get-preferences', async () => {
         try {

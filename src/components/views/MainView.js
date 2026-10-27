@@ -13,6 +13,30 @@ const LOCAL_LLM_PRESETS = [
     { value: 'unsloth/Qwen3.5-35B-A3B-GGUF:Q4_K_M', label: 'Qwen 3.5 35B-A3B Q4 — 22.92 GB · Largest' },
 ];
 
+const RESPONSE_PROVIDER_OPTIONS = [
+    { value: 'gemini', label: 'Gemini Live (built-in)' },
+    { value: 'groq', label: 'Groq' },
+    { value: 'openrouter', label: 'OpenRouter' },
+];
+
+const OPENROUTER_DEFAULT_MODEL = 'google/gemini-3.8-flash';
+const OPENROUTER_MAX_LISTED_MODELS = 200;
+
+function filterOpenRouterModels(models, query, imageOnly) {
+    const needle = (query || '').trim().toLowerCase();
+    return models.filter(model => {
+        if (imageOnly && !model.supportsImages) return false;
+        return !needle || model.id.toLowerCase().includes(needle) || model.name.toLowerCase().includes(needle);
+    });
+}
+
+function formatOpenRouterModelLabel(model) {
+    const tags = [];
+    if (model.isFree) tags.push('free');
+    if (model.supportsImages) tags.push('vision');
+    return tags.length ? `${model.name} · ${tags.join(' · ')}` : model.name;
+}
+
 export class MainView extends LitElement {
     static styles = css`
         * {
@@ -294,6 +318,22 @@ export class MainView extends LitElement {
 
         .form-hint span.link:hover {
             text-decoration: underline;
+        }
+
+        .model-picker {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-hint-row {
+            display: flex;
+            justify-content: space-between;
+            gap: var(--space-sm);
+        }
+
+        .form-hint.error-text {
+            color: var(--danger, #ef4444);
         }
 
         .whisper-label-row {
@@ -702,6 +742,17 @@ export class MainView extends LitElement {
         _groqModel: { state: true },
         _groqImageModel: { state: true },
         _disableGroqThinking: { state: true },
+        _responseProvider: { state: true },
+        _openrouterKey: { state: true },
+        _openrouterModel: { state: true },
+        _openrouterImageModel: { state: true },
+        _openrouterModels: { state: true },
+        _openrouterModelsLoading: { state: true },
+        _openrouterModelsError: { state: true },
+        _openrouterQuery: { state: true },
+        _openrouterImageQuery: { state: true },
+        _openrouterCustom: { state: true },
+        _openrouterImageCustom: { state: true },
         _tokenError: { state: true },
         _keyError: { state: true },
         // Local AI state
@@ -731,6 +782,17 @@ export class MainView extends LitElement {
         this._groqModel = 'qwen/qwen3.6-27b';
         this._groqImageModel = 'qwen/qwen3.6-27b';
         this._disableGroqThinking = true;
+        this._responseProvider = 'groq';
+        this._openrouterKey = '';
+        this._openrouterModel = OPENROUTER_DEFAULT_MODEL;
+        this._openrouterImageModel = OPENROUTER_DEFAULT_MODEL;
+        this._openrouterModels = [];
+        this._openrouterModelsLoading = false;
+        this._openrouterModelsError = '';
+        this._openrouterQuery = '';
+        this._openrouterImageQuery = '';
+        this._openrouterCustom = false;
+        this._openrouterImageCustom = false;
         this._tokenError = false;
         this._keyError = false;
         this._showLocalHelp = false;
@@ -771,6 +833,14 @@ export class MainView extends LitElement {
             this._groqModel = config.groqModel || 'qwen/qwen3.6-27b';
             this._groqImageModel = config.groqImageModel || 'qwen/qwen3.6-27b';
             this._disableGroqThinking = config.disableGroqThinking === true;
+            this._responseProvider = config.responseProvider || 'groq';
+            this._openrouterKey = (await cheatingDaddy.storage.getOpenRouterApiKey().catch(() => '')) || '';
+            this._openrouterModel = config.openrouterModel || OPENROUTER_DEFAULT_MODEL;
+            this._openrouterImageModel = config.openrouterImageModel || OPENROUTER_DEFAULT_MODEL;
+
+            if (this._usesProvider('openrouter')) {
+                this._loadOpenRouterModels();
+            }
 
             // Load local AI settings
             this._localLlmModel = prefs.localLlmModel || 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
@@ -967,6 +1037,63 @@ export class MainView extends LitElement {
         this._disableGroqThinking = disabled;
         await cheatingDaddy.storage.updateConfig('disableGroqThinking', disabled);
         this.requestUpdate();
+    }
+
+    _usesProvider(provider) {
+        return this._responseProvider === provider;
+    }
+
+    async _saveResponseProvider(val) {
+        this._responseProvider = val;
+        await cheatingDaddy.storage.updateConfig('responseProvider', val);
+        this._ensureOpenRouterModels();
+        this.requestUpdate();
+    }
+
+    _ensureOpenRouterModels() {
+        if (this._usesProvider('openrouter') && this._openrouterModels.length === 0) {
+            this._loadOpenRouterModels();
+        }
+    }
+
+    async _saveOpenRouterKey(val) {
+        this._openrouterKey = val;
+        await cheatingDaddy.storage.setOpenRouterApiKey(val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenRouterModel(val) {
+        this._openrouterModel = val;
+        await cheatingDaddy.storage.updateConfig('openrouterModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenRouterImageModel(val) {
+        this._openrouterImageModel = val;
+        await cheatingDaddy.storage.updateConfig('openrouterImageModel', val);
+        this.requestUpdate();
+    }
+
+    async _loadOpenRouterModels(force = false) {
+        if (this._openrouterModelsLoading) return;
+        this._openrouterModelsLoading = true;
+        this._openrouterModelsError = '';
+
+        try {
+            const result = await cheatingDaddy.storage.listOpenRouterModels(force);
+            if (result?.success) {
+                this._openrouterModels = result.data || [];
+                const ids = new Set(this._openrouterModels.map(model => model.id));
+                this._openrouterCustom = this._openrouterCustom || !ids.has(this._openrouterModel);
+                this._openrouterImageCustom = this._openrouterImageCustom || !ids.has(this._openrouterImageModel);
+            } else {
+                this._openrouterModelsError = result?.error || 'Could not load models';
+            }
+        } catch (e) {
+            this._openrouterModelsError = e.message;
+        } finally {
+            this._openrouterModelsLoading = false;
+        }
     }
 
     async _saveOpenaiKey(val) {
@@ -1192,43 +1319,34 @@ export class MainView extends LitElement {
                 <summary class="config-summary">
                     <span class="config-summary-text">
                         <span class="config-summary-title">AI responses</span>
-                        <span class="config-summary-description">Groq key and response model</span>
+                        <span class="config-summary-description">
+                            ${RESPONSE_PROVIDER_OPTIONS.find(option => option.value === this._responseProvider)?.label || 'Groq'} key and response
+                            model
+                        </span>
                     </span>
                     ${this._renderConfigChevron()}
                 </summary>
                 <div class="config-content">
                     <div class="form-group">
-                        <label class="form-label">Groq API Key</label>
-                        <input type="password" placeholder="Optional" .value=${this._groqKey} @input=${e => this._saveGroqKey(e.target.value)} />
-                        <div class="form-hint">
-                            <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq key</span>
-                        </div>
+                        <label class="form-label">Answers provider</label>
+                        <select @change=${e => this._saveResponseProvider(e.target.value)}>
+                            ${RESPONSE_PROVIDER_OPTIONS.map(
+                                option =>
+                                    html`<option value=${option.value} ?selected=${option.value === this._responseProvider}>${option.label}</option>`
+                            )}
+                        </select>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Groq Model</label>
-                        <input type="text" .value=${this._groqModel} @input=${e => this._saveGroqModel(e.target.value)} />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Groq Image Model</label>
-                        <input type="text" .value=${this._groqImageModel} @input=${e => this._saveGroqImageModel(e.target.value)} />
-                    </div>
-
-                    <label class="config-checkbox">
-                        <input
-                            type="checkbox"
-                            .checked=${this._disableGroqThinking}
-                            @change=${e => this._saveDisableGroqThinking(e.target.checked)}
-                        />
-                        <span class="config-checkbox-text">
-                            <span class="config-summary-title">Disable thinking</span>
-                            <span class="config-summary-description">Faster responses with less internal reasoning</span>
-                        </span>
-                    </label>
+                    ${this._usesProvider('groq') ? this._renderGroqSettings() : ''}
+                    ${this._usesProvider('openrouter') ? this._renderOpenRouterSettings() : ''}
+                    ${this._usesProvider('groq') || this._usesProvider('openrouter') ? this._renderThinkingToggle() : ''}
 
                     <div class="config-note">
-                        If the Groq API key is empty, Gemini Live is used for answers instead. Its answer quality may be lower.
+                        ${
+                            this._responseProvider === 'gemini'
+                                ? 'Gemini Live answers on its own. Its answer quality may be lower than a dedicated text model.'
+                                : 'If the API key is empty, Gemini Live is used for answers instead. Its answer quality may be lower.'
+                        }
                     </div>
                 </div>
             </details>
@@ -1240,6 +1358,126 @@ export class MainView extends LitElement {
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
             </div>
+        `;
+    }
+
+    _renderGroqSettings() {
+        return html`
+            <div class="form-group">
+                <label class="form-label">Groq API Key</label>
+                <input type="password" placeholder="Optional" .value=${this._groqKey} @input=${e => this._saveGroqKey(e.target.value)} />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq key</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Groq Model</label>
+                <input type="text" .value=${this._groqModel} @input=${e => this._saveGroqModel(e.target.value)} />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Groq Image Model</label>
+                <input type="text" .value=${this._groqImageModel} @input=${e => this._saveGroqImageModel(e.target.value)} />
+            </div>
+        `;
+    }
+
+    _renderOpenRouterSettings() {
+        return html`
+            <div class="form-group">
+                <label class="form-label">OpenRouter API Key</label>
+                <input type="password" placeholder="sk-or-..." .value=${this._openrouterKey} @input=${e => this._saveOpenRouterKey(e.target.value)} />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://openrouter.ai/keys')}>Get OpenRouter key</span>
+                </div>
+            </div>
+
+            ${this._renderOpenRouterModelPicker({
+                label: 'Model',
+                value: this._openrouterModel,
+                query: this._openrouterQuery,
+                custom: this._openrouterCustom,
+                imageOnly: false,
+                onQuery: q => (this._openrouterQuery = q),
+                onCustom: custom => (this._openrouterCustom = custom),
+                onSave: val => this._saveOpenRouterModel(val),
+            })}
+            ${this._renderOpenRouterModelPicker({
+                label: 'Image Model',
+                value: this._openrouterImageModel,
+                query: this._openrouterImageQuery,
+                custom: this._openrouterImageCustom,
+                imageOnly: true,
+                onQuery: q => (this._openrouterImageQuery = q),
+                onCustom: custom => (this._openrouterImageCustom = custom),
+                onSave: val => this._saveOpenRouterImageModel(val),
+            })}
+        `;
+    }
+
+    _renderOpenRouterModelPicker({ label, value, query, custom, imageOnly, onQuery, onCustom, onSave }) {
+        const matches = filterOpenRouterModels(this._openrouterModels, query, imageOnly);
+        const listed = matches.slice(0, OPENROUTER_MAX_LISTED_MODELS);
+        const current = this._openrouterModels.find(model => model.id === value);
+        const showCurrentSeparately = !custom && value && !listed.some(model => model.id === value);
+
+        const onSelect = selected => {
+            if (selected === '__custom__') {
+                onCustom(true);
+                return;
+            }
+            onCustom(false);
+            onSave(selected);
+        };
+
+        let status = '';
+        if (this._openrouterModelsLoading) {
+            status = 'Loading models…';
+        } else if (this._openrouterModelsError) {
+            status = html`<span class="error-text">${this._openrouterModelsError}</span>`;
+        } else if (this._openrouterModels.length > 0) {
+            status = matches.length > listed.length ? `Showing ${listed.length} of ${matches.length} — refine search` : `${matches.length} models`;
+        }
+
+        return html`
+            <div class="form-group model-picker">
+                <label class="form-label">OpenRouter ${label}</label>
+                <input type="text" placeholder="Search models (e.g. claude, gpt, free)" .value=${query} @input=${e => onQuery(e.target.value)} />
+                <select @change=${e => onSelect(e.target.value)}>
+                    ${
+                        showCurrentSeparately
+                            ? html`<option value=${value} selected>${current ? formatOpenRouterModelLabel(current) : value}</option>`
+                            : ''
+                    }
+                    ${listed.map(
+                        model =>
+                            html`<option value=${model.id} ?selected=${!custom && model.id === value}>${formatOpenRouterModelLabel(model)}</option>`
+                    )}
+                    <option value="__custom__" ?selected=${custom}>Custom model ID…</option>
+                </select>
+                ${
+                    custom
+                        ? html`<input type="text" placeholder="provider/model-id" .value=${value} @input=${e => onSave(e.target.value.trim())} />`
+                        : ''
+                }
+                <div class="form-hint form-hint-row ${this._openrouterModelsError ? 'error-text' : ''}">
+                    <span>${status}</span>
+                    <span class="link" @click=${() => this._loadOpenRouterModels(true)}>Refresh</span>
+                </div>
+            </div>
+        `;
+    }
+
+    _renderThinkingToggle() {
+        return html`
+            <label class="config-checkbox">
+                <input type="checkbox" .checked=${this._disableGroqThinking} @change=${e => this._saveDisableGroqThinking(e.target.checked)} />
+                <span class="config-checkbox-text">
+                    <span class="config-summary-title">Disable thinking</span>
+                    <span class="config-summary-description">Faster responses with less internal reasoning</span>
+                </span>
+            </label>
         `;
     }
 

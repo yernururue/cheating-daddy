@@ -13,11 +13,16 @@ const DEFAULT_CONFIG = {
     groqModel: 'qwen/qwen3.6-27b',
     groqImageModel: 'qwen/qwen3.6-27b',
     disableGroqThinking: true,
+    // 'gemini' | 'groq' | 'openrouter' — which service answers in BYOK mode
+    responseProvider: 'groq',
+    openrouterModel: 'google/gemini-3.8-flash',
+    openrouterImageModel: 'google/gemini-3.8-flash',
 };
 
 const DEFAULT_CREDENTIALS = {
     apiKey: '',
     groqApiKey: '',
+    openrouterApiKey: '',
 };
 
 const DEFAULT_PREFERENCES = {
@@ -207,6 +212,14 @@ function getGroqApiKey() {
 
 function setGroqApiKey(groqApiKey) {
     return setCredentials({ groqApiKey });
+}
+
+function getOpenRouterApiKey() {
+    return getCredentials().openrouterApiKey || '';
+}
+
+function setOpenRouterApiKey(openrouterApiKey) {
+    return setCredentials({ openrouterApiKey });
 }
 
 // ============ PREFERENCES ============
@@ -513,6 +526,8 @@ module.exports = {
     setApiKey,
     getGroqApiKey,
     setGroqApiKey,
+    getOpenRouterApiKey,
+    setOpenRouterApiKey,
 
     // Preferences
     getPreferences,
